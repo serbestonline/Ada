@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 APP="build/Ada.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" build/AppIcon.iconset
-swiftc -O -target arm64-apple-macos14.0 Sources/main.swift -o "$APP/Contents/MacOS/Ada"
+swiftc -O -target arm64-apple-macos14.0 Sources/*.swift -o "$APP/Contents/MacOS/Ada"
 swift scripts/make_icon.swift build/AppIcon-1024.png
 for size in 16 32 128 256 512; do
     sips -z $size $size build/AppIcon-1024.png --out "build/AppIcon.iconset/icon_${size}x${size}.png" >/dev/null

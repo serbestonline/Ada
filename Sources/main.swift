@@ -11,13 +11,18 @@ enum Ada {
     static let flashAfter: TimeInterval = 20     // bundan kısa turlarda ekran yanmaz, yalnız çan çalar
     static let claude = "com.anthropic.claudefordesktop"
     static let listedFor: TimeInterval = 12 * 3600    // açılan listede bundan eski oturumlar görünmez
+    /// Etiket dili: ADA_LANG ya da sistem dili; Türkçe dışında İngilizce.
+    static var turkish = (ProcessInfo.processInfo.environment["ADA_LANG"] ?? Locale.preferredLanguages.first ?? "en").hasPrefix("tr")
     static let staleAfter: TimeInterval = 600    // shortcut: Esc ile kesilen turda Stop gelmez, ada 10 dk sonra son "Bitti"ye döner
 }
+
+func T(_ tr: String, _ en: String) -> String { Ada.turkish ? tr : en }
 
 switch CommandLine.arguments.dropFirst().first {
 case "hook": Hook.run(); exit(0)
 case "selftest": Hook.selftest(); exit(0)
 case "title": print(Desktop.info(CommandLine.arguments[2]) as Any); exit(0)
+case "record": MainActor.assumeIsolated { Media.record(CommandLine.arguments[2], CommandLine.arguments[3]) }; exit(0)
 case "snapshot": MainActor.assumeIsolated { Snapshot.write(CommandLine.arguments[2]) }; exit(0)
 default: break
 }
@@ -47,23 +52,23 @@ enum Hook {
     static func label(_ event: String, _ j: [String: Any]) -> String {
         switch event {
         case "PreToolUse": break
-        case "Notification": return "Onayını bekliyor"
-        default: return "Düşünüyor"
+        case "Notification": return T("Onayını bekliyor", "Waiting for your approval")
+        default: return T("Düşünüyor", "Thinking")
         }
         let input = j["tool_input"] as? [String: Any] ?? [:]
         let file = (input["file_path"] ?? input["notebook_path"]) as? String
         let name = file.map { URL(fileURLWithPath: $0).lastPathComponent }
         let desc = input["description"] as? String
         switch j["tool_name"] as? String ?? "" {
-        case "Edit", "MultiEdit", "Write", "NotebookEdit": return join("Düzenliyor", name)
-        case "Read": return join("Okuyor", name)
-        case "Bash": return join("Çalıştırıyor", desc)
-        case "Grep", "Glob": return "Arıyor"
-        case "WebFetch", "WebSearch": return "Web'de arıyor"
-        case "Agent", "Task": return join("Ajan çalışıyor", desc)
-        case "AskUserQuestion": return "Sana soruyor"
+        case "Edit", "MultiEdit", "Write", "NotebookEdit": return join(T("Düzenliyor", "Editing"), name)
+        case "Read": return join(T("Okuyor", "Reading"), name)
+        case "Bash": return join(T("Çalıştırıyor", "Running"), desc)
+        case "Grep", "Glob": return T("Arıyor", "Searching")
+        case "WebFetch", "WebSearch": return T("Web'de arıyor", "Browsing the web")
+        case "Agent", "Task": return join(T("Ajan çalışıyor", "Running an agent"), desc)
+        case "AskUserQuestion": return T("Sana soruyor", "Asking you")
         case "Skill": return join("Skill", input["skill"] as? String)
-        default: return "Çalışıyor"
+        default: return T("Çalışıyor", "Working")
         }
     }
 
@@ -73,6 +78,7 @@ enum Hook {
     }
 
     static func selftest() {
+        Ada.turkish = true
         func pre(_ tool: String, _ input: [String: Any]) -> String { label("PreToolUse", ["tool_name": tool, "tool_input": input]) }
         precondition(pre("Edit", ["file_path": "/a/b/main.swift"]) == "Düzenliyor · main.swift")
         precondition(pre("Bash", ["command": "ls", "description": "List files"]) == "Çalıştırıyor · List files")
@@ -98,6 +104,7 @@ final class Model: ObservableObject {
     @Published var now = Date()
     @Published var topInset: CGFloat = 0
     @Published var expanded = false
+    var recording = false                            // README kaydı: yıldız gerçek saatle değil, kaydın saatiyle döner
 
     /// En son hareket eden çalışan oturum; yoksa en son biten, Claude yeniden başlayana kadar "Bitti" olarak kalır.
     var current: Session? {
@@ -122,7 +129,7 @@ final class Model: ObservableObject {
         switch event {
         case "Stop":
             guard var s = sessions[id], s.done == nil else { return }
-            s.done = t; s.updated = t; s.label = "Bitti"
+            s.done = t; s.updated = t; s.label = T("Bitti", "Done")
             sessions[id] = s
             fill(id)                                 // sohbetin adı ilk turdan sonra konur
             Chime.play()
@@ -140,6 +147,11 @@ final class Model: ObservableObject {
             }
         }
         now = t
+    }
+
+    func islandSize(notch: CGFloat, inset: CGFloat) -> CGSize {
+        let rows = expanded ? CGFloat(list.count) : 0
+        return CGSize(width: max(expanded ? 400 : 340, notch + 60), height: inset + 32 + (rows > 0 ? 5 + rows * 26 + 6 : 0))
     }
 
     func fill(_ id: String) {
@@ -190,7 +202,7 @@ struct IslandView: View {
     var body: some View {
         let cur = model.current
         VStack(spacing: 0) {
-            line(cur, cur.map { $0.done != nil ? "Bitti · \($0.name)" : $0.label } ?? "", nil)
+            line(cur, cur.map { $0.done != nil ? "\(T("Bitti", "Done")) · \($0.name)" : $0.label } ?? "", nil)
                 .frame(height: 32).contentShape(Rectangle()).onTapGesture { Desktop.open(cur) }
             if model.expanded && !model.list.isEmpty {
                 Rectangle().fill(.white.opacity(0.12)).frame(height: 1).padding(.bottom, 4)
@@ -213,8 +225,8 @@ struct IslandView: View {
                 Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
             } else {
                 TimelineView(.periodic(from: .now, by: 0.12)) { ctx in
-                    Text(spinner[Int(ctx.date.timeIntervalSinceReferenceDate / 0.12) % spinner.count])
-                        .foregroundColor(orange).frame(width: 16)
+                    let t = (model.recording ? model.now : ctx.date).timeIntervalSinceReferenceDate
+                    Text(spinner[Int(t / 0.12) % spinner.count]).foregroundColor(orange).frame(width: 16)
                 }
             }
             Text(title).foregroundColor(.white).lineLimit(1).layoutPriority(1)
@@ -273,9 +285,9 @@ final class Island {
         let inset = screen.safeAreaInsets.top
         var notch: CGFloat = 0
         if let l = screen.auxiliaryTopLeftArea, let r = screen.auxiliaryTopRightArea { notch = screen.frame.width - l.width - r.width }
-        let rows = model.expanded ? CGFloat(model.list.count) : 0
-        let w = max(model.expanded ? 400 : 340, notch + 60), h = inset + 32 + (rows > 0 ? 5 + rows * 26 + 6 : 0)
-        let frame = NSRect(x: screen.frame.midX - w / 2, y: screen.frame.maxY - h, width: w, height: h)
+        let size = model.islandSize(notch: notch, inset: inset)
+        let frame = NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height,
+                           width: size.width, height: size.height)
         if model.topInset != inset { model.topInset = inset }
         if panel.frame != frame { panel.setFrame(frame, display: true, animate: panel.isVisible) }
         if !panel.isVisible { panel.orderFrontRegardless() }
