@@ -17,7 +17,7 @@
 
 When Claude Code works on something long, you switch to another window, another display or another task. Then you keep coming back to check whether it is done. Ada saves you the trip:
 
-1. **See the current step from anywhere.** A black island sits at the top center of the screen, under the notch on a MacBook or over the menu bar on an external display. It shows the current step (*Reading*, *Editing · LoginView.swift*, *Running · Build the app*) and a timer for the turn.
+1. **See the current step from anywhere.** A black island sits at the top center of the screen, under the notch on a MacBook or over the menu bar on an external display. It shows the chat's name, the current step (*Reading*, *Editing · LoginView.swift*, *Running · Build the app*) and a timer for the turn.
 2. **Know the moment it is done.** When the turn ends, the island turns green, a soft two-note chime plays and, after a long turn, every display glows three times.
 3. **Keep track of several chats.** Hover over the island to see your other Claude chats. Click one to open it in the Claude app.
 
@@ -37,9 +37,9 @@ Ada is driven by [Claude Code hooks](https://docs.claude.com/en/docs/claude-code
 
 ## What the island shows
 
-On the left, Claude's spinning asterisk and the current step. On the right, the time since you sent your message.
+On the left, Claude's spinning asterisk, the chat's name as it appears in the Claude app and, in grey, the current step. On the right, the time since you sent your message.
 
-| Claude is… | The island says |
+| Claude is… | The step reads |
 |---|---|
 | between tools, thinking | **Thinking** |
 | reading a file | **Reading** · file name |

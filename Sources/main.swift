@@ -141,10 +141,10 @@ final class Model: ObservableObject {
                 let old = sessions[id]
                 sessions[id] = Session(label: label, project: project, start: t, updated: t, done: nil,
                                        id: id, title: old?.title, localID: old?.localID)
-                if old == nil { fill(id) }
             } else {
                 sessions[id]!.label = label; sessions[id]!.updated = t
             }
+            if sessions[id]?.title == nil { fill(id) }
         }
         now = t
     }
@@ -165,16 +165,17 @@ enum Desktop {
     static let root = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
     private static var paths: [String: URL] = [:]
-    private static var missing: Set<String> = []     // terminal oturumları: kaydı yok, bir daha taranmaz
+    private static var missedAt: [String: Date] = [:] // kaydı bulunamayan oturum en çok 30 sn'de bir yeniden aranır
 
     static func info(_ cli: String) -> (title: String?, localID: String)? {
-        if paths[cli] == nil && !missing.contains(cli) {
+        // Yeni açılan sohbetin kaydına oturum kimliği biraz sonra yazılır; terminal oturumlarının hiç kaydı yoktur.
+        if paths[cli] == nil && Date().timeIntervalSince(missedAt[cli] ?? .distantPast) > 30 {
             // shortcut: yeni oturumda bütün kayıtlar bir kez taranır (~30 MB); klasör çok büyürse dosya tarihine göre daraltılmalı
             let key = Data("\"cliSessionId\":\"\(cli)\"".utf8)
             let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?
                 .compactMap { $0 as? URL }.filter { $0.pathExtension == "json" } ?? []
             paths[cli] = files.first { (try? Data(contentsOf: $0, options: .alwaysMapped))?.range(of: key) != nil }
-            if paths[cli] == nil { missing.insert(cli) }
+            if paths[cli] == nil { missedAt[cli] = Date() }
         }
         guard let url = paths[cli], let d = try? Data(contentsOf: url),
               let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
@@ -202,7 +203,7 @@ struct IslandView: View {
     var body: some View {
         let cur = model.current
         VStack(spacing: 0) {
-            line(cur, cur.map { $0.done != nil ? "\(T("Bitti", "Done")) · \($0.name)" : $0.label } ?? "", nil)
+            line(cur, cur?.name ?? "", cur?.label)
                 .frame(height: 32).contentShape(Rectangle()).onTapGesture { Desktop.open(cur) }
             if model.expanded && !model.list.isEmpty {
                 Rectangle().fill(.white.opacity(0.12)).frame(height: 1).padding(.bottom, 4)
