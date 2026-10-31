@@ -10,6 +10,7 @@ enum Ada {
     static let event = Notification.Name("com.serbest.ada.event")
     static let flashAfter: TimeInterval = 20     // bundan kısa turlarda ekran yanmaz, yalnız çan çalar
     static let claude = "com.anthropic.claudefordesktop"
+    static let announceFor: TimeInterval = 8      // biten oturum adanın en üstünde bu kadar duyurulur
     static let listedFor: TimeInterval = 12 * 3600    // açılan listede bundan eski oturumlar görünmez
     /// Etiket dili: ADA_LANG ya da sistem dili; Türkçe dışında İngilizce.
     static var turkish = (ProcessInfo.processInfo.environment["ADA_LANG"] ?? Locale.preferredLanguages.first ?? "en").hasPrefix("tr")
@@ -106,20 +107,26 @@ final class Model: ObservableObject {
     @Published var expanded = false
     var recording = false                            // README kaydı: yıldız gerçek saatle değil, kaydın saatiyle döner
 
-    /// En son hareket eden çalışan oturum; yoksa en son biten, Claude yeniden başlayana kadar "Bitti" olarak kalır.
-    var current: Session? {
-        let live = sessions.values.filter { $0.done == nil && now.timeIntervalSince($0.updated) < Ada.staleAfter }
-        if let s = live.max(by: { $0.updated < $1.updated }) { return s }
-        return sessions.values.filter { $0.done != nil }.max(by: { $0.done! < $1.done! })
+    var announced: String?                           // az önce biten oturum
+    var announcedAt = Date.distantPast
+
+    /// Adada hep görünen satırlar: az önce biten oturum, sonra çalışan bütün oturumlar turlarının başladığı sırayla;
+    /// hiçbiri yoksa en son biten, Claude yeniden başlayana kadar "Bitti" olarak kalır.
+    var shown: [Session] {
+        var rows = sessions.values.filter { $0.done == nil && now.timeIntervalSince($0.updated) < Ada.staleAfter }
+            .sorted { $0.start < $1.start }
+        if let id = announced, now.timeIntervalSince(announcedAt) < Ada.announceFor, let s = sessions[id], s.done != nil {
+            rows.insert(s, at: 0)
+        }
+        if rows.isEmpty, let last = sessions.values.filter({ $0.done != nil }).max(by: { $0.done! < $1.done! }) { rows = [last] }
+        return Array(rows.prefix(6))
     }
 
-    /// Üzerine gelince açılan liste: üst satırda görünen dışındaki oturumlar; önce çalışanlar, sonra bitenler, en yeni üstte.
-    var list: [Session] {
-        let shown = current?.id
-        let recent = sessions.values.filter { $0.id != shown && now.timeIntervalSince($0.updated) < Ada.listedFor }
-        let live = recent.filter { $0.done == nil && now.timeIntervalSince($0.updated) < Ada.staleAfter }
-        let rest = recent.filter { $0.done != nil }
-        return Array((live.sorted { $0.updated > $1.updated } + rest.sorted { $0.done! > $1.done! }).prefix(6))
+    /// Üzerine gelince eklenen satırlar: son 12 saatte biten öteki oturumlar, en yeni üstte.
+    var extra: [Session] {
+        let ids = Set(shown.map(\.id))
+        let done = sessions.values.filter { $0.done != nil && !ids.contains($0.id) && now.timeIntervalSince($0.updated) < Ada.listedFor }
+        return Array(done.sorted { $0.done! > $1.done! }.prefix(5))
     }
 
     func handle(_ info: [AnyHashable: Any]) {
@@ -131,6 +138,7 @@ final class Model: ObservableObject {
             guard var s = sessions[id], s.done == nil else { return }
             s.done = t; s.updated = t; s.label = T("Bitti", "Done")
             sessions[id] = s
+            announced = id; announcedAt = t
             fill(id)                                 // sohbetin adı ilk turdan sonra konur
             Chime.play()
             if t.timeIntervalSince(s.start) >= Ada.flashAfter { ScreenPulse.flash() }
@@ -150,8 +158,9 @@ final class Model: ObservableObject {
     }
 
     func islandSize(notch: CGFloat, inset: CGFloat) -> CGSize {
-        let rows = expanded ? CGFloat(list.count) : 0
-        return CGSize(width: max(expanded ? 400 : 340, notch + 60), height: inset + 32 + (rows > 0 ? 5 + rows * 26 + 6 : 0))
+        let rows = CGFloat(shown.count), more = expanded ? CGFloat(extra.count) : 0
+        let h = inset + 32 + (rows > 1 ? (rows - 1) * 28 + 4 : 0) + (more > 0 ? 5 + more * 26 + 6 : 0)
+        return CGSize(width: max(rows > 1 || more > 0 ? 400 : 340, notch + 60), height: h)
     }
 
     func fill(_ id: String) {
@@ -201,17 +210,19 @@ struct IslandView: View {
     private let orange = Color(red: 0.85, green: 0.47, blue: 0.34)
 
     var body: some View {
-        let cur = model.current
+        let shown = model.shown, extra = model.expanded ? model.extra : []
         VStack(spacing: 0) {
-            line(cur, cur?.name ?? "", cur?.label)
-                .frame(height: 32).contentShape(Rectangle()).onTapGesture { Desktop.open(cur) }
-            if model.expanded && !model.list.isEmpty {
-                Rectangle().fill(.white.opacity(0.12)).frame(height: 1).padding(.bottom, 4)
-                ForEach(Array(model.list.enumerated()), id: \.offset) { _, s in
-                    line(s, s.name, s.label).frame(height: 26).contentShape(Rectangle()).onTapGesture { Desktop.open(s) }
-                }
-                Spacer(minLength: 6)
+            ForEach(Array(shown.enumerated()), id: \.offset) { i, s in
+                line(s, highlight: s.id == model.announced && s.done != nil && shown.count > 1)
+                    .frame(height: i == 0 ? 32 : 28).contentShape(Rectangle()).onTapGesture { Desktop.open(s) }
             }
+            if !extra.isEmpty {
+                Rectangle().fill(.white.opacity(0.12)).frame(height: 1).padding(.top, shown.count > 1 ? 4 : 0).padding(.bottom, 4)
+                ForEach(Array(extra.enumerated()), id: \.offset) { _, s in
+                    line(s).frame(height: 26).contentShape(Rectangle()).onTapGesture { Desktop.open(s) }
+                }
+            }
+            Spacer(minLength: 0)
         }
         .font(.system(size: 13, weight: .semibold))
         .padding(.horizontal, 18)
@@ -220,9 +231,10 @@ struct IslandView: View {
         .background(UnevenRoundedRectangle(bottomLeadingRadius: 16, bottomTrailingRadius: 16).fill(.black))
     }
 
-    private func line(_ s: Model.Session?, _ title: String, _ detail: String?) -> some View {
+    /// Bir oturumun satırı: yıldız ya da onay, sohbetin adı, gri olarak o anki iş, süre. Duyuruda "Bitti" yeşil yazılır.
+    private func line(_ s: Model.Session, highlight: Bool = false) -> some View {
         HStack(spacing: 10) {
-            if s?.done != nil {
+            if s.done != nil {
                 Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
             } else {
                 TimelineView(.periodic(from: .now, by: 0.12)) { ctx in
@@ -230,15 +242,14 @@ struct IslandView: View {
                     Text(spinner[Int(t / 0.12) % spinner.count]).foregroundColor(orange).frame(width: 16)
                 }
             }
-            Text(title).foregroundColor(.white).lineLimit(1).layoutPriority(1)
-            if let detail { Text(detail).foregroundColor(.white.opacity(0.55)).lineLimit(1).truncationMode(.tail) }
+            Text(s.name).foregroundColor(.white).lineLimit(1).truncationMode(.tail).layoutPriority(1)
+            Text(s.label).foregroundColor(highlight ? .green : .white.opacity(0.55)).lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 8)
-            Text(elapsed(s)).foregroundColor(.white.opacity(0.55)).monospacedDigit()
+            Text(elapsed(s)).foregroundColor(.white.opacity(0.55)).monospacedDigit().lineLimit(1).fixedSize().layoutPriority(2)
         }
     }
 
-    private func elapsed(_ s: Model.Session?) -> String {
-        guard let s else { return "" }
+    private func elapsed(_ s: Model.Session) -> String {
         let sec = Int((s.done ?? model.now).timeIntervalSince(s.start))
         return String(format: "%d:%02d", sec / 60, sec % 60)
     }
@@ -273,14 +284,14 @@ final class Island {
             guard let self else { return }
             let over = self.panel.isVisible && NSMouseInRect(NSEvent.mouseLocation, self.panel.frame, false)
             guard over != self.model.expanded else { return }
-            if over { self.model.list.forEach { self.model.fill($0.id) } }
+            if over { (self.model.shown + self.model.extra).forEach { self.model.fill($0.id) } }
             self.model.expanded = over; self.refresh()
         }
     }
 
     /// Fare hangi ekrandaysa ada onun tepesine geçer; çentikli ekranda çentiğin altına uzar.
     func refresh() {
-        guard model.current != nil else { panel.orderOut(nil); return }
+        guard !model.shown.isEmpty else { panel.orderOut(nil); return }
         let mouse = NSEvent.mouseLocation
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main else { return }
         let inset = screen.safeAreaInsets.top
@@ -378,7 +389,7 @@ enum Chime {
             IslandView(model: model("Çalıştırıyor · Build the app", done: false, inset: 32)).frame(width: 340, height: 64)
             IslandView(model: {
                 let m = model("Düzenliyor · main.swift", done: false, inset: 0)
-                m.sessions["a"]!.title = "Görev tamamlama bildirimi"
+                m.sessions["a"]!.title = "Houra break screen ve session editing"
                 m.sessions["b"] = .init(label: "Bitti", project: "Sebo Mind Base", start: t - 400, updated: t - 60, done: t - 60,
                                         id: "b", title: "Behavioral Lab tetik senkronizasyonu")
                 m.expanded = true

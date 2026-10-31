@@ -66,18 +66,22 @@ import SwiftUI
         return Frame(model: model(at: t, [session("a", "Fix the login bug", label, started: -72, updated: t)]))
     }
 
-    /// Tur biter: ada "Done" der, ekranlar üç kez yanıp söner (gerçekte bir de çan çalar).
+    /// İki sohbet çalışırken biri biter: ada onu en üstte "Done" diye duyurur, ekranlar üç kez yanıp söner
+    /// (gerçekte bir de çan çalar), öteki sohbet altında sürer.
     private static func done(_ t: Double) -> Frame {
         let end = 1.5
-        let s = t < end
+        let a = t < end
             ? session("a", "Fix the login bug", pre("Bash", ["description": "Run the tests"]), started: -151, updated: t)
             : session("a", "Fix the login bug", T("Bitti", "Done"), started: -151, done: end)
+        let b = session("b", "Write the README", pre("Edit", ["file_path": "/app/README.md"]), started: -40, updated: t)
+        let m = model(at: t, [a, b])
+        if t >= end { m.announced = "a"; m.announcedAt = t0 + end }
         let dt = t - end
         let pulse = dt >= 0 && dt < 1.8 ? abs(sin(.pi * dt / 0.6)) : 0     // Houra'daki gibi: 0,3 sn aç, 0,3 sn kapa, üç kez
-        return Frame(model: model(at: t, [s]), pulse: pulse)
+        return Frame(model: m, pulse: pulse)
     }
 
-    /// Fare adaya gelir, ada diğer sohbetlerle açılır, birine tıklanır.
+    /// İki sohbet çalışıyor; fare adaya gelince biten sohbetler de açılır, birine tıklanır.
     private static func hover(_ t: Double) -> Frame {
         let m = model(at: t, [
             session("a", "Write the README", pre("Edit", ["file_path": "/app/README.md"]), started: -95, updated: t),
@@ -86,7 +90,7 @@ import SwiftUI
         ])
         let start = CGPoint(x: size.width * 0.72, y: size.height * 0.8)
         let island = CGPoint(x: size.width / 2 + 60, y: 16)
-        let row = CGPoint(x: size.width / 2 - 40, y: 32 + 5 + 13)
+        let row = CGPoint(x: size.width / 2 - 40, y: 32 + 28 + 4 + 1 + 4 + 13)     // ayırıcının altındaki ilk biten sohbet
         let cursor: CGPoint
         switch t {
         case ..<0.6: cursor = start
