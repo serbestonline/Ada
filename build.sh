@@ -32,7 +32,7 @@ PLIST
 codesign --force -s - "$APP"
 
 if [[ "${1:-}" == "--install" ]]; then
-    pkill -x Ada || true
+    pkill -x Ada && sleep 1 || true             # kapanmadan açılırsa macOS -600 hatası verir
     rm -rf /Applications/Ada.app
     cp -R "$APP" /Applications/Ada.app
     open -g /Applications/Ada.app
