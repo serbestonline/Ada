@@ -20,7 +20,7 @@ import SwiftUI
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         switch scenario {
         case "work": frames(9, work).enumerated().forEach { write(Scene(frame: $1), "\(dir)/f\(String(format: "%05d", $0)).png") }
-        case "done": frames(6, done).enumerated().forEach { write(Scene(frame: $1), "\(dir)/f\(String(format: "%05d", $0)).png") }
+        case "done": frames(7.5, done).enumerated().forEach { write(Scene(frame: $1), "\(dir)/f\(String(format: "%05d", $0)).png") }
         case "hover": frames(7.5, hover).enumerated().forEach { write(Scene(frame: $1), "\(dir)/f\(String(format: "%05d", $0)).png") }
         case "displays": write(displays(), "\(dir)/displays.png")
         default: fatalError("bilinmeyen sahne: \(scenario)")
