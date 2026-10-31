@@ -51,7 +51,7 @@ On the left, Claude's spinning asterisk, the chat's name as it appears in the Cl
 | asking you a question | **Asking you** |
 | waiting for you to approve a tool | **Waiting for your approval** |
 
-If several chats are working at once, the island shows one row for each, in the order their turns started, so rows do not jump around. When nothing is running, it shows the chat that finished last.
+The island always stays a single line. If several chats are working at once, it just says how many (*2 chats running*); hover over it to see each of them. When nothing is running, it shows the chat that finished last.
 
 ## When Claude finishes
 
@@ -59,7 +59,7 @@ If several chats are working at once, the island shows one row for each, in the 
   <img src="assets/done.gif" width="900" alt="The island turns into Done and the screen glows three times">
 </p>
 
-When a turn ends, the chat that just finished moves to the top of the island with a green check and **Done**, above any chats that are still working. It stays there for 8 seconds, so you can see at a glance which one is done. It also plays a short two-note chime that is generated in code, so there is no sound file.
+When a turn ends, the island shows the name of the chat that just finished with a green check and **Done**, even if other chats are still working. It stays for 8 seconds, so you can see at a glance which one is done, then goes back to the running count. It also plays a short two-note chime that is generated in code, so there is no sound file.
 
 If the turn took longer than 20 seconds, every connected display also glows white three times. It is the same pulse the [Houra](https://github.com/serbestonline/Houra) focus timer uses when a break is due. Quick answers only chime, so a short back-and-forth does not flash your screen.
 
@@ -71,7 +71,7 @@ When no other chat is working, the island stays on **Done** with the length of t
   <img src="assets/hover.gif" width="900" alt="Hovering over the island lists the other chats; clicking one opens it">
 </p>
 
-Move the mouse onto the island and it slides open with the chats that finished in the last 12 hours, newest at the top, below the ones that are still working. Each row shows the chat's name as it appears in the Claude app, what it is doing and its timer. Move the mouse away and the island closes again.
+Move the mouse onto the island and it slides open: first every chat that is still working, in the order their turns started, then the chats that finished in the last 12 hours, newest first. Each row shows the chat's name as it appears in the Claude app, what it is doing and its timer. Move the mouse away and the island closes again.
 
 **Click a row** and that chat opens in the Claude desktop app. Working chats can be clicked the same way. Chats started from the terminal have no window in the app, so clicking them just brings Claude to the front.
 

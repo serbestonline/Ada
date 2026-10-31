@@ -66,8 +66,8 @@ import SwiftUI
         return Frame(model: model(at: t, [session("a", "Fix the login bug", label, started: -72, updated: t)]))
     }
 
-    /// İki sohbet çalışırken biri biter: ada onu en üstte "Done" diye duyurur, ekranlar üç kez yanıp söner
-    /// (gerçekte bir de çan çalar), öteki sohbet altında sürer.
+    /// İki sohbet çalışırken ada yalnız sayısını yazar; biri bitince adını "Done" ile duyurur ve ekranlar üç kez
+    /// yanıp söner (gerçekte bir de çan çalar).
     private static func done(_ t: Double) -> Frame {
         let end = 1.5
         let a = t < end
@@ -81,7 +81,7 @@ import SwiftUI
         return Frame(model: m, pulse: pulse)
     }
 
-    /// İki sohbet çalışıyor; fare adaya gelince biten sohbetler de açılır, birine tıklanır.
+    /// İki sohbet çalışıyor, ada yalnız sayısını yazar; fare gelince sohbetler adlarıyla açılır, birine tıklanır.
     private static func hover(_ t: Double) -> Frame {
         let m = model(at: t, [
             session("a", "Write the README", pre("Edit", ["file_path": "/app/README.md"]), started: -95, updated: t),
@@ -90,7 +90,7 @@ import SwiftUI
         ])
         let start = CGPoint(x: size.width * 0.72, y: size.height * 0.8)
         let island = CGPoint(x: size.width / 2 + 60, y: 16)
-        let row = CGPoint(x: size.width / 2 - 40, y: 32 + 28 + 4 + 1 + 4 + 13)     // ayırıcının altındaki ilk biten sohbet
+        let row = CGPoint(x: size.width / 2 - 40, y: 32 + 5 + 2 * 26 + 13)       // iki çalışan sohbetin altındaki biten sohbet
         let cursor: CGPoint
         switch t {
         case ..<0.6: cursor = start
