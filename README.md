@@ -59,7 +59,7 @@ The island always stays a single line. If several chats are working at once, it 
   <img src="assets/done.gif" width="900" alt="The island turns into Done and the screen glows three times">
 </p>
 
-When a turn ends, the island shows the name of the chat that just finished with a green check and **Done**, even if other chats are still working. It stays for 8 seconds, so you can see at a glance which one is done, then goes back to the running count. It also plays a short two-note chime that is generated in code, so there is no sound file.
+When a turn ends, the island shows the name of the chat that just finished with a green check and **Done**, even if other chats are still working. It stays for 4 seconds, so you can see at a glance which one is done, then goes back to the running count. It also plays a short two-note chime that is generated in code, so there is no sound file.
 
 If the turn took longer than 20 seconds, every connected display also glows white three times. It is the same pulse the [Houra](https://github.com/serbestonline/Houra) focus timer uses when a break is due. Quick answers only chime, so a short back-and-forth does not flash your screen.
 

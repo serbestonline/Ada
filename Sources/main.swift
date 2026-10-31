@@ -10,7 +10,7 @@ enum Ada {
     static let event = Notification.Name("com.serbest.ada.event")
     static let flashAfter: TimeInterval = 20     // bundan kısa turlarda ekran yanmaz, yalnız çan çalar
     static let claude = "com.anthropic.claudefordesktop"
-    static let announceFor: TimeInterval = 8      // biten oturum adanın en üstünde bu kadar duyurulur
+    static let announceFor: TimeInterval = 4      // biten oturum adanın en üstünde bu kadar duyurulur
     static let listedFor: TimeInterval = 12 * 3600    // açılan listede bundan eski oturumlar görünmez
     /// Etiket dili: ADA_LANG ya da sistem dili; Türkçe dışında İngilizce.
     static var turkish = (ProcessInfo.processInfo.environment["ADA_LANG"] ?? Locale.preferredLanguages.first ?? "en").hasPrefix("tr")
