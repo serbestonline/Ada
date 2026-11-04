@@ -31,6 +31,7 @@ Ada is driven by [Claude Code hooks](https://docs.claude.com/en/docs/claude-code
 - [When Claude finishes](#when-claude-finishes)
 - [Hover and click](#hover-and-click)
 - [External displays and the notch](#external-displays-and-the-notch)
+- [Hide it or move it anywhere](#hide-it-or-move-it-anywhere)
 - [Installation](#installation)
 - [How it works](#how-it-works)
 - [Building and contributing](#building-and-contributing)
@@ -83,6 +84,21 @@ Move the mouse onto the island and it slides open: first every chat that is stil
 
 The island follows your mouse to whichever display it is on. On an external display it sits over the middle of the menu bar. On a MacBook with a notch it grows down from the notch, so the text sits just below it. It stays visible on every Space and over full-screen apps.
 
+## Hide it or move it anywhere
+
+<p align="center">
+  <img src="assets/capsule.png" width="600" alt="The island pulled away from the menu bar as a capsule, with its list opening down and up">
+</p>
+
+Ada has a small icon in the menu bar: a square with the island hanging from its top. Its menu has two things:
+
+- **Hide island.** The island stops drawing until you show it again, and the icon dims so you remember it is hidden. The chime and the screen pulse still play when a long turn finishes.
+- **Position.** *In the menu bar* is the island you know. *Free position* turns it into a capsule that stays wherever you put it.
+
+You can also just **drag the island** off the top of the screen. It becomes a capsule with rounded corners and stays where you drop it; it no longer follows the mouse to other displays. While you drag, a dashed outline appears at the top centre of the screen. Drop the capsule there and it snaps back into the menu bar. Hovering still opens the list, and if the capsule sits near the bottom of the screen the list opens upwards instead. A short click still opens the chat; only a real drag moves it.
+
+Ada remembers the position and whether it is hidden. If the display the capsule was on is unplugged, it goes back to the menu bar.
+
 ## Installation
 
 Requirements: macOS 14 or later on Apple Silicon, the Xcode Command Line Tools and [Claude Code](https://docs.claude.com/en/docs/claude-code/overview). There is no Xcode project and no third-party dependency.
@@ -128,7 +144,7 @@ You do not need to start Ada yourself or add it to your login items: if it is no
 - **One binary, two roles.** Claude Code runs `Ada hook` for every event and passes the event as JSON. That short-lived process turns it into a label (for example *Editing · main.swift*), sends it to the running island and exits. Without arguments, the same binary is the island itself.
 - **Chat names and links.** For chats in the Claude desktop app, Ada reads the chat's title and id from the app's session records in `~/Library/Application Support/Claude/claude-code-sessions`, and opens a chat through the app's `claude://code/continue?session=…` link. Both are internal details of the Claude app, not a documented API, so a future app update may change them. If that happens, rows fall back to the folder name and clicking just brings Claude to the front.
 - **Interrupted turns.** If you stop a turn with Esc, Claude Code sends no *Stop* event. After 10 minutes without any event, the island goes back to the last finished chat.
-- **Privacy.** Everything stays on your Mac. Ada keeps its state in memory only and writes no files.
+- **Privacy.** Everything stays on your Mac. Ada keeps the chats in memory only; the only things it saves are the capsule's position and whether the island is hidden, in its own preferences.
 
 ## Building and contributing
 

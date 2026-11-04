@@ -105,7 +105,12 @@ final class Model: ObservableObject {
     @Published var now = Date()
     @Published var topInset: CGFloat = 0
     @Published var expanded = false
-    var recording = false                            // README kaydı: yıldız gerçek saatle değil, kaydın saatiyle döner
+    @Published var floating = false                  // tepeden koparılmış kapsül: üstü düz, altı az yuvarlak
+    @Published var upward = false                    // kapsül ekranın altındaysa liste yukarı açılır
+    @Published var snapping = false                  // sürüklenen kapsül tepedeki yapışma alanında
+    var dragging = false, draggedAt = Date.distantPast
+    var onDrag: ((Bool) -> Void)?                    // true: sürükleniyor, false: bırakıldı
+    var recording = false                           // README kaydı: yıldız gerçek saatle değil, kaydın saatiyle döner
 
     var announced: String?                           // az önce biten oturum
     var announcedAt = Date.distantPast
@@ -216,34 +221,57 @@ struct IslandView: View {
     private let orange = Color(red: 0.85, green: 0.47, blue: 0.34)
 
     var body: some View {
-        let extra = model.expanded ? model.extra : []
         VStack(spacing: 0) {
-            switch model.headline {
-            case .session(let s):
-                line(s, highlight: s.id == model.announced && s.done != nil)
-                    .frame(height: 32).contentShape(Rectangle()).onTapGesture { Desktop.open(s) }
-            case .count(let n):
-                HStack(spacing: 10) {
-                    spinnerView
-                    Text(T("\(n) sohbet çalışıyor", "\(n) chats running")).foregroundColor(.white).lineLimit(1)
-                    Spacer(minLength: 8)
-                }
-                .frame(height: 32).contentShape(Rectangle()).onTapGesture { Desktop.open(nil) }
-            case .none: EmptyView()
-            }
-            if !extra.isEmpty {
-                Rectangle().fill(.white.opacity(0.12)).frame(height: 1).padding(.bottom, 4)
-                ForEach(Array(extra.enumerated()), id: \.offset) { _, s in
-                    line(s).frame(height: 26).contentShape(Rectangle()).onTapGesture { Desktop.open(s) }
-                }
-            }
-            Spacer(minLength: 0)
+            if model.upward { Spacer(minLength: 0); list; headline } else { headline; list; Spacer(minLength: 0) }
         }
         .font(.system(size: 13, weight: .semibold))
         .padding(.horizontal, 18)
         .padding(.top, model.topInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(UnevenRoundedRectangle(bottomLeadingRadius: 16, bottomTrailingRadius: 16).fill(.black))
+        .background(shape.fill(.black))
+        .simultaneousGesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
+            .onChanged { _ in model.onDrag?(true) }
+            .onEnded { _ in model.onDrag?(false) })
+    }
+
+    /// Tepedeki adanın yalnız altı 16 yuvarlak; yerinden koparılan kapsülün dört köşesi 10.
+    private var shape: UnevenRoundedRectangle {
+        model.floating ? UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10, bottomTrailingRadius: 10, topTrailingRadius: 10)
+                       : UnevenRoundedRectangle(bottomLeadingRadius: 16, bottomTrailingRadius: 16)
+    }
+
+    @ViewBuilder private var headline: some View {
+        switch model.headline {
+        case .session(let s):
+            line(s, highlight: s.id == model.announced && s.done != nil)
+                .frame(height: 32).contentShape(Rectangle()).onTapGesture { open(s) }
+        case .count(let n):
+            HStack(spacing: 10) {
+                spinnerView
+                Text(T("\(n) sohbet çalışıyor", "\(n) chats running")).foregroundColor(.white).lineLimit(1)
+                Spacer(minLength: 8)
+            }
+            .frame(height: 32).contentShape(Rectangle()).onTapGesture { open(nil) }
+        case .none: EmptyView()
+        }
+    }
+
+    @ViewBuilder private var list: some View {
+        let extra = model.expanded ? model.extra : []
+        if !extra.isEmpty {
+            let divider = Rectangle().fill(.white.opacity(0.12)).frame(height: 1)
+            if !model.upward { divider.padding(.bottom, 4) }
+            ForEach(Array(extra.enumerated()), id: \.offset) { _, s in
+                line(s).frame(height: 26).contentShape(Rectangle()).onTapGesture { open(s) }
+            }
+            if model.upward { divider.padding(.top, 4) }
+        }
+    }
+
+    /// Sürüklemenin sonundaki bırakış sohbeti açmasın.
+    private func open(_ s: Model.Session?) {
+        guard !model.dragging, Date().timeIntervalSince(model.draggedAt) > 0.3 else { return }
+        Desktop.open(s)
     }
 
     /// Bir oturumun satırı: yıldız ya da onay, sohbetin adı, gri olarak o anki iş, süre. Duyuruda "Bitti" yeşil yazılır.
@@ -256,6 +284,7 @@ struct IslandView: View {
             }
             Text(s.name).foregroundColor(.white).lineLimit(1).truncationMode(.tail).layoutPriority(1)
             Text(s.label).foregroundColor(highlight ? .green : .white.opacity(0.55)).lineLimit(1).truncationMode(.tail)
+                .fixedSize(horizontal: s.done != nil, vertical: false)   // "Bitti" kesilmesin; uzun ad kısalır
             Spacer(minLength: 8)
             Text(elapsed(s)).foregroundColor(.white.opacity(0.55)).monospacedDigit().lineLimit(1).fixedSize().layoutPriority(2)
         }
@@ -281,26 +310,64 @@ final class FirstClickHost<V: View>: NSHostingView<V> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-final class Island {
+/// Sürüklerken tepede beliren kesik çizgili yapışma alanı; kapsül içine girince belirginleşir.
+struct GuideView: View {
+    @ObservedObject var model: Model
+    var body: some View {
+        UnevenRoundedRectangle(bottomLeadingRadius: 16, bottomTrailingRadius: 16)
+            .strokeBorder(.white.opacity(model.snapping ? 0.9 : 0.4), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+            .background(UnevenRoundedRectangle(bottomLeadingRadius: 16, bottomTrailingRadius: 16).fill(.black.opacity(model.snapping ? 0.35 : 0.15)))
+    }
+}
+
+final class Island: NSObject, NSMenuDelegate {
     let model = Model()
     let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    private let guide = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    private let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private var dragOrigin: (mouse: NSPoint, frame: NSRect)?
+    private let defaults = UserDefaults.standard
 
-    init() {
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        panel.level = .statusBar
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+    /// Gizliyken ada çizilmez; çan ve ekran nabzı sürer.
+    private var hidden: Bool {
+        get { defaults.bool(forKey: "hidden") }
+        set { defaults.set(newValue, forKey: "hidden"); status.button?.appearsDisabled = newValue; refresh() }
+    }
+    /// Kapsülün üst kenarının ortası; adanın tepeye göre değil, ekrana göre yeri.
+    private var floatAt: NSPoint? {
+        get { defaults.string(forKey: "floatAt").map(NSPointFromString) }
+        set { defaults.set(newValue.map(NSStringFromPoint), forKey: "floatAt") }
+    }
+
+    override init() {
+        super.init()
+        for p in [panel, guide] {
+            p.isOpaque = false
+            p.backgroundColor = .clear
+            p.hasShadow = false
+            p.level = .statusBar
+            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        }
+        guide.ignoresMouseEvents = true
+        guide.contentView = NSHostingView(rootView: GuideView(model: model))
         panel.contentView = FirstClickHost(rootView: IslandView(model: model))
+        model.floating = defaults.bool(forKey: "floating") && floatAt != nil
+        model.onDrag = { [weak self] moving in self?.drag(moving) }
+
+        status.button?.image = Self.glyph()
+        status.button?.appearsDisabled = hidden
+        status.menu = NSMenu()
+        status.menu?.delegate = self
+
         DistributedNotificationCenter.default().addObserver(forName: Ada.event, object: nil, queue: .main) { [weak self] n in
             self?.model.handle(n.userInfo ?? [:]); self?.refresh()
         }
         Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.model.now = Date(); self?.refresh()
         }
-        // Fare adanın üstündeyse liste açılır; ayrılınca kapanır.
+        // Fare adanın üstündeyse liste açılır; ayrılınca kapanır. Sürüklerken açılmaz.
         Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self else { return }
+            guard let self, self.dragOrigin == nil else { return }
             let over = self.panel.isVisible && NSMouseInRect(NSEvent.mouseLocation, self.panel.frame, false)
             guard over != self.model.expanded else { return }
             if over { self.model.sessions.keys.forEach { self.model.fill($0) } }
@@ -308,20 +375,122 @@ final class Island {
         }
     }
 
-    /// Fare hangi ekrandaysa ada onun tepesine geçer; çentikli ekranda çentiğin altına uzar.
     func refresh() {
+        guard dragOrigin == nil else { return }       // sürüklerken pencereyi fare taşır
         if case .none = model.headline { panel.orderOut(nil); return }
-        let mouse = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main else { return }
-        let inset = screen.safeAreaInsets.top
-        var notch: CGFloat = 0
-        if let l = screen.auxiliaryTopLeftArea, let r = screen.auxiliaryTopRightArea { notch = screen.frame.width - l.width - r.width }
-        let size = model.islandSize(notch: notch, inset: inset)
-        let frame = NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height,
-                           width: size.width, height: size.height)
-        if model.topInset != inset { model.topInset = inset }
+        if hidden { panel.orderOut(nil); return }
+        guard let frame = model.floating ? floatingFrame() : islandFrame() else { return }
         if panel.frame != frame { panel.setFrame(frame, display: true, animate: panel.isVisible) }
         if !panel.isVisible { panel.orderFrontRegardless() }
+    }
+
+    private func screen(at p: NSPoint) -> NSScreen? { NSScreen.screens.first { NSMouseInRect(p, $0.frame, false) } }
+
+    private func notch(_ screen: NSScreen) -> CGFloat {
+        guard let l = screen.auxiliaryTopLeftArea, let r = screen.auxiliaryTopRightArea else { return 0 }
+        return screen.frame.width - l.width - r.width
+    }
+
+    /// Fare hangi ekrandaysa ada onun tepesine geçer; çentikli ekranda çentiğin altına uzar.
+    private func islandFrame() -> NSRect? {
+        guard let screen = screen(at: NSEvent.mouseLocation) ?? NSScreen.main else { return nil }
+        let inset = screen.safeAreaInsets.top
+        let size = model.islandSize(notch: notch(screen), inset: inset)
+        if model.topInset != inset { model.topInset = inset }
+        if model.upward { model.upward = false }
+        return NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height, width: size.width, height: size.height)
+    }
+
+    /// Kapsül bırakıldığı yerde kalır; altında yer yoksa liste yukarı açılır, sayı satırı yerinden oynamaz.
+    private func floatingFrame() -> NSRect? {
+        guard let top = floatAt, let screen = screen(at: NSPoint(x: top.x, y: top.y - 16)) else {
+            model.floating = false; return islandFrame()   // kaydedilen yer artık hiçbir ekranda değil (monitör çıkarıldı)
+        }
+        if model.topInset != 0 { model.topInset = 0 }
+        let size = model.islandSize(notch: 0, inset: 0)
+        let up = model.expanded && top.y - size.height < screen.visibleFrame.minY
+        if model.upward != up { model.upward = up }
+        return NSRect(x: top.x - size.width / 2, y: up ? top.y - 32 : top.y - size.height, width: size.width, height: size.height)
+    }
+
+    // MARK: Sürükleme
+
+    /// Tepenin ortasında, adanın kendi yeri; kapsülün üst kenarı buraya bırakılırsa ada yeniden menü çubuğuna yapışır.
+    private func snapZone(_ screen: NSScreen) -> NSRect {
+        let size = model.islandSize(notch: notch(screen), inset: screen.safeAreaInsets.top)
+        return NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height, width: size.width, height: size.height)
+    }
+
+    private func drag(_ moving: Bool) {
+        let m = NSEvent.mouseLocation
+        if moving {
+            if dragOrigin == nil {
+                dragOrigin = (m, panel.frame)
+                model.dragging = true; model.expanded = false; model.upward = false
+                model.floating = true; model.topInset = 0
+            }
+            guard let o = dragOrigin else { return }
+            let size = model.islandSize(notch: 0, inset: 0)
+            let top = NSPoint(x: o.frame.midX + m.x - o.mouse.x, y: o.frame.maxY + m.y - o.mouse.y)
+            panel.setFrame(NSRect(x: top.x - size.width / 2, y: top.y - size.height, width: size.width, height: size.height), display: true)
+            if let s = screen(at: m) {
+                let zone = snapZone(s)
+                model.snapping = zone.insetBy(dx: -30, dy: -40).contains(top)
+                if guide.frame != zone { guide.setFrame(zone, display: true) }
+                if !guide.isVisible { guide.orderFrontRegardless(); panel.orderFrontRegardless() }   // kapsül alanın üstünde kalsın
+            }
+        } else {
+            guard dragOrigin != nil else { return }
+            dragOrigin = nil
+            model.dragging = false; model.draggedAt = Date()
+            guide.orderOut(nil)
+            if model.snapping { model.floating = false } else { floatAt = NSPoint(x: panel.frame.midX, y: panel.frame.maxY) }
+            model.snapping = false
+            defaults.set(model.floating, forKey: "floating")
+            refresh()
+        }
+    }
+
+    // MARK: Menü çubuğu
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        func item(_ title: String, _ action: Selector, on: Bool = false) {
+            let i = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            i.target = self; i.state = on ? .on : .off
+            menu.addItem(i)
+        }
+        item(hidden ? T("Adayı göster", "Show island") : T("Adayı gizle", "Hide island"), #selector(toggleHidden))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem.sectionHeader(title: T("Konum", "Position")))
+        item(T("Menü çubuğunda", "In the menu bar"), #selector(dock), on: !model.floating)
+        item(T("Serbest konum", "Free position"), #selector(undock), on: model.floating)
+    }
+
+    @objc private func toggleHidden() { hidden.toggle() }
+
+    @objc private func dock() {
+        model.floating = false; defaults.set(false, forKey: "floating"); refresh()
+    }
+
+    /// Kapsülün daha önce bırakıldığı yer yoksa ana ekranda menü çubuğunun biraz altına iner.
+    @objc private func undock() {
+        if floatAt == nil, let s = NSScreen.main { floatAt = NSPoint(x: s.frame.midX, y: s.visibleFrame.maxY - 40) }
+        model.floating = true; defaults.set(true, forKey: "floating"); refresh()
+    }
+
+    /// Menü çubuğu simgesi: tepesinden ada sarkan kare; sistem rengine uysun diye şablon görsel.
+    static func glyph() -> NSImage {
+        let img = NSImage(size: NSSize(width: 18, height: 14), flipped: false) { r in
+            let box = r.insetBy(dx: 1, dy: 1)
+            NSColor.black.set()
+            let frame = NSBezierPath(roundedRect: box, xRadius: 3, yRadius: 3)
+            frame.lineWidth = 1.2; frame.stroke()
+            NSBezierPath(roundedRect: NSRect(x: box.midX - 4.5, y: box.maxY - 4.5, width: 9, height: 4.5), xRadius: 2, yRadius: 2).fill()
+            return true
+        }
+        img.isTemplate = true
+        return img
     }
 }
 
@@ -414,6 +583,17 @@ enum Chime {
                 m.expanded = true
                 return m
             }()).frame(width: 400, height: 32 + 5 + 26 + 6)
+            // Kapsül: tek sohbet, fareyle aşağı açılan ve ekranın altında yukarı açılan liste.
+            ForEach([false, true], id: \.self) { up in
+                IslandView(model: {
+                    let m = model("Düzenliyor · main.swift", done: false, inset: 0)
+                    m.sessions["b"] = .init(label: "Çalıştırıyor · Render", project: "psyleri", start: t - 400, updated: t, id: "b", title: "psyleri önizleme")
+                    m.sessions["c"] = .init(label: "Bitti", project: "Houra", start: t - 900, updated: t - 60, done: t - 60, id: "c", title: "Houra esneme")
+                    m.floating = true; m.expanded = true; m.upward = up
+                    return m
+                }()).frame(width: 400, height: 32 + 5 + 3 * 26 + 6)
+            }
+            IslandView(model: { let m = model("Bitti", done: true, inset: 0); m.floating = true; return m }()).frame(width: 340, height: 32)
         }.padding(24).background(Color(red: 0.02, green: 0.05, blue: 0.3))
         let r = ImageRenderer(content: view); r.scale = 2
         let rep = NSBitmapImageRep(cgImage: r.cgImage!)
